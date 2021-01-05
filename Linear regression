@@ -1,0 +1,189 @@
+import pandas as pd 
+import numpy as np
+train_file=r'/Users/ed/Dropbox/Python/Dataset/Data/Data/loan_data_train.csv'
+test_file=r'/Users/ed/Dropbox/Python/Dataset/Data/Data/loan_data_test.csv'
+
+ld_train=pd.read_csv(train_file)
+ld_test=pd.read_csv(test_file)               
+ld_train.head(10)
+#ld_train.shape
+ld_test.head()
+ld_train.head()
+# lets combine the data for data prep
+ld_test['Interest.Rate']=np.nan
+ld_train['data']='train'
+ld_test['data']='test'
+ld_test=ld_test[ld_train.columns]
+ld_all=pd.concat([ld_train,ld_test],axis=0)
+ld_all.head()
+ld_all.dtypes
+# ID,Amount.Funded.By.Investors : drop
+# Interest Rate , Debt to income ratio : remove % and then to numeric
+# Amount.Requested , 'Open.CREDIT.Lines','Revolving.CREDIT.Balance': convert it to numeric 
+# FICO.Range : replace it by a numeric column which is average of the range
+# Employment Length : convert to number
+# Loan Lenth, Loan Purpose , State , Home ownership: dummies for categories with good occurence rate
+# ID,Amount.Funded.By.Investors : drop
+ld_all.drop(['ID','Amount.Funded.By.Investors'],axis=1,inplace=True)
+
+for col in ['Interest.Rate','Debt.To.Income.Ratio']:
+    ld_all[col]=ld_all[col].str.replace("%","")
+
+for col in ['Amount.Requested', 'Interest.Rate','Debt.To.Income.Ratio',
+            'Open.CREDIT.Lines','Revolving.CREDIT.Balance']:
+    ld_all[col]=pd.to_numeric(ld_all[col],errors='coerce')
+    
+k=ld_all['FICO.Range'].str.split("-",expand=True).astype(float)
+ld_all['fico']=0.5*(k[0]+k[1])
+del ld_all['FICO.Range']
+#ttt=pd.Series()
+#p=ld_all['FICO.Range'].str.split("-",expand=True)
+#type(p[0])
+#ttt
+#t
+
+#pd.to_numeric("aa",errors='coerce')
+
+ld_all['Employment.Length'].value_counts()
+
+ld_all['Employment.Length']=ld_all['Employment.Length'].str.replace('years',"")
+
+ld_all['Employment.Length']=ld_all['Employment.Length'].str.replace('year',"")
+
+ld_all['Employment.Length']=np.where(ld_all['Employment.Length'].str[:2]=="10",10,ld_all['Employment.Length'])
+
+ld_all['Employment.Length']=np.where(ld_all['Employment.Length'].str[0]=="<",0,ld_all['Employment.Length'])
+
+ld_all['Employment.Length']=pd.to_numeric(ld_all['Employment.Length'],errors='coerce')
+
+# Notice that to apply string function on pandas data frame columns you need to str attribute
+cat_cols=ld_all.select_dtypes(['object']).columns
+
+cat_cols
+
+cat_cols=cat_cols[:-1]
+
+cat_cols
+
+ld_all['Loan.Purpose'].value_counts()
+
+# you can use following method if you want to ignore categories with too low frequencies ,
+# in next section for logistic regression we will be using  pandas' get dummies function. 
+# you can work with either of these . 
+# ignoring categories with low frequencies however will result in fewer columns without 
+# affecting model performance too much .
+
+for col in cat_cols:
+    #print(col,"first loop")
+    freqs=ld_all[col].value_counts()
+    #print(col,freqs,"first loop frequency")
+    k=freqs.index[freqs>20][:-1]
+    #print("value of ", k)
+    #print(k, col,freqs,"first loop frequency k")
+    for cat in k:
+        name=col+'_'+cat
+        ld_all[name]=(ld_all[col]==cat).astype(int)
+        #print(name)
+    del ld_all[col]
+    print(col)
+    
+ld_all.head()
+
+ld_all.shape
+
+ld_all.isnull().sum()
+
+for col in ld_all.columns:
+    if (col not in ['Interest.Rate','data'])& (ld_all[col].isnull().sum()>0):
+        ld_all.loc[ld_all[col].isnull(),col]=ld_all.loc[ld_all['data']=='train',col].mean()
+        
+ld_all['Employment.Length'].isnull()
+
+ld_all.loc[ld_all['Employment.Length'].isnull(),'Employment.Length']
+
+ld_train=ld_all[ld_all['data']=='train']
+del ld_train['data']
+ld_test=ld_all[ld_all['data']=='test']
+ld_test.drop(['Interest.Rate','data'],axis=1,inplace=True)
+
+del ld_all
+
+from sklearn.model_selection import train_test_split
+
+ld_train1,ld_train2=train_test_split(ld_train,test_size=0.2,random_state=2)
+
+ld_train.shape
+
+ld_train1.shape
+
+ld_train2.shape
+
+# Notice that only train data is used for imputing missing values in both train and test 
+
+x_train1=ld_train1.drop('Interest.Rate',axis=1)
+y_train1=ld_train1['Interest.Rate']
+
+from sklearn.linear_model import LinearRegression
+
+lm=LinearRegression()
+
+lm.fit(x_train1,y_train1)
+
+x_train1.shape
+
+lm.intercept_
+
+list(zip(x_train1.columns,lm.coef_))
+
+x_train2=ld_train2.drop('Interest.Rate',axis=1)
+
+predicted_ir=lm.predict(x_train2)
+
+predicted_ir
+
+from sklearn.metrics import mean_absolute_error
+
+mean_absolute_error(ld_train2['Interest.Rate'],predicted_ir)
+
+from sklearn.metrics import mean_squared_error
+import math
+math.sqrt(mean_squared_error(ld_train2['Interest.Rate'],predicted_ir))
+
+x_train=ld_train.drop('Interest.Rate',axis=1)
+y_train=ld_train['Interest.Rate']
+
+lm.fit(x_train,y_train)
+
+test_pred=lm.predict(ld_test)
+
+test_pred
+
+pd.DataFrame(test_pred).to_csv("mysubmission.csv",index=False)
+X=x_train
+params = np.append(lm.intercept_,lm.coef_)
+predictions = lm.predict(X)
+
+y=y_train
+newX = pd.DataFrame({"Constant":np.ones(len(X))}).join(pd.DataFrame(X))
+MSE = (sum((y-predictions)**2))/(len(newX)-len(newX.columns))
+
+# Note if you don't want to use a DataFrame replace the two lines above with
+# newX = np.append(np.ones((len(X),1)), X, axis=1)
+# MSE = (sum((y-predictions)**2))/(len(newX)-len(newX[0]))
+
+var_b = MSE*(np.linalg.inv(np.dot(newX.T,newX)).diagonal())
+sd_b = np.sqrt(var_b)
+ts_b = params/ sd_b
+
+from scipy import stats
+p_values =[2*(1-stats.t.cdf(np.abs(i),(len(newX)-1))) for i in ts_b]
+
+sd_b = np.round(sd_b,3)
+ts_b = np.round(ts_b,3)
+
+p_values = np.round(p_values,3)
+params = np.round(params,4)
+
+myDF3 = pd.DataFrame()
+myDF3["Coefficients"],myDF3["Standard Errors"],myDF3["t values"],myDF3["Probabilities"] = [params,sd_b,ts_b,p_values]
+print(myDF3)
